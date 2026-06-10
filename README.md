@@ -10,3 +10,7 @@ El repositorio está dividido en dos partes:
 
 - `Experiments/Main/`  
   Incluye la fase principal, donde se entrenan los modelos seleccionados con el dataset completo.
+
+-  `utils`
+  Incluye los scripts utilizados para la generación de diferentes gráficas utilizadas. 
+
