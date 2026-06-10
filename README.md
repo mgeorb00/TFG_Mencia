@@ -9,8 +9,8 @@ El repositorio está dividido en dos partes:
   Contiene la fase exploratoria del proyecto. Se realizan pruebas con distintos modelos y configuraciones sobre un dataset reducido, COCO128.
 
 - `Experiments/Main/`  
-  Incluye la fase principal, donde se entrenan los modelos seleccionados con el dataset completo.
+  Incluye la fase principal, donde se entrenan los modelos seleccionados con los datasets elaborados.
 
 -  `utils`
-  Incluye los scripts utilizados para la generación de diferentes gráficas utilizadas. 
+  Incluye los scripts utilizados para la generación de diferentes gráficas utilizadas en la memoria del TFG, también los scripts utilizados en el preprocesado de los conjuntos de datos. 
 
