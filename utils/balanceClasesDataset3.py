@@ -1,11 +1,11 @@
 """
 balance_dataset.py
 ------------------
-Undersampling de un dataset YOLO (estructura Roboflow) para limitar
-el número de instancias por clase a un máximo configurable.
+Undersampling inteligente de un dataset YOLO (estructura Roboflow).
+Reduce las clases mayoritarias limitando sus instancias a un máximo configurable,
+pero PROTEGE las imágenes que contienen clases minoritarias/raras para evitar
+que se pierdan muestras críticas y causen falsos negativos (background).
 
-Uso:
-    python balance_dataset.py
 """
 
 import os
@@ -18,7 +18,7 @@ from collections import defaultdict
 # =============================================================================
 
 DATASET_DIR = "C:/Users/menci/TFGMencia/ModificacionesDataset/DatasetTFG-2502.v2i.yolov11"
-OUTPUT_DIR  = "C:/Users/menci/TFGMencia/ModificacionesDataset/datasetBalanceado-v3"
+OUTPUT_DIR  = "C:/Users/menci/TFGMencia/ModificacionesDataset/datasetBalanceado-v3-2"
 MAX_INSTANCES = 200
 RANDOM_SEED   = 42
 SPLITS = ["train", "valid", "test"]
@@ -64,14 +64,14 @@ def label_path_from_image(image_path):
 
 def select_images(image_paths, max_instances, seed):
     """
-    Selecciona un subconjunto de imágenes de forma que ninguna clase
-    supere max_instances instancias en total.
-
+    Selecciona imágenes priorizando las clases minoritarias (más raras)
+    para evitar que desaparezcan debido al descarte de clases mayoritarias.
+    
     Estrategia:
-      1. Filtra imágenes que no existen en disco.
-      2. Mezcla aleatoriamente.
-      3. Va añadiendo imágenes mientras ninguna clase supere el límite.
-      4. Si una imagen haría superar el límite en alguna clase, se descarta.
+      1. Escanea globalmente el split para mapear qué clases son escasas (< MAX_INSTANCES).
+      2. Separa las imágenes en 'valiosas' (tienen clases raras) y 'comunes'.
+      3. Añade TODAS las valiosas sin restricción para salvaguardar la cola del dataset.
+      4. Añade las comunes de forma aleatoria hasta rellenar el cupo de las mayoritarias.
     """
     random.seed(seed)
 
@@ -87,21 +87,54 @@ def select_images(image_paths, max_instances, seed):
     if missing > 0:
         print(f"    AVISO: {missing} imágenes no encontradas en disco, se ignoran.")
 
-    random.shuffle(existing)
+    print("    [Analizando densidad de clases para protección de minorías]...")
+    global_counts = defaultdict(int)
+    image_contents = {}
+    
+    # Mapeo previo del contenido de cada imagen
+    for img_path in existing:
+        label_path = label_path_from_image(img_path)
+        instances = count_instances_in_file(label_path)
+        image_contents[img_path] = instances
+        for class_id, count in instances.items():
+            global_counts[class_id] += count
+
+    valiosas = []
+    comunes = []
+    
+    # Separar imágenes valiosas (contienen clases que globalmente no llegan al máximo)
+    for img_path in existing:
+        instances = image_contents[img_path]
+        tiene_clase_rara = any(global_counts[cid] <= max_instances for cid in instances.keys())
+        
+        if tiene_clase_rara:
+            valiosas.append(img_path)
+        else:
+            comunes.append(img_path)
+
+    # Mezclar ambos grupos por separado para mantener aleatoriedad
+    random.shuffle(valiosas)
+    random.shuffle(comunes)
 
     class_counts = defaultdict(int)
     selected = []
 
-    for img_path in existing:
-        label_path = label_path_from_image(img_path)
-        instances = count_instances_in_file(label_path)
+    # PASO 1: Proteger y añadir imágenes de clases minoritarias
+    for img_path in valiosas:
+        selected.append(img_path)
+        for class_id, count in image_contents[img_path].items():
+            class_counts[class_id] += count
 
+    # PASO 2: Rellenar con imágenes comunes respetando el límite superior
+    for img_path in comunes:
+        instances = image_contents[img_path]
+        
         can_add = True
         for class_id, count in instances.items():
             if class_counts[class_id] + count > max_instances:
                 can_add = False
                 break
-
+        
         if can_add:
             selected.append(img_path)
             for class_id, count in instances.items():
@@ -130,11 +163,11 @@ def copy_split(split_name, dataset_dir, output_dir, max_instances, seed):
     if split_name == "train":
         selected, class_counts = select_images(image_paths, max_instances, seed)
         print(f"  [{split_name}] Imágenes seleccionadas: {len(selected)}")
-        print(f"  [{split_name}] Instancias por clase tras balanceo:")
+        print(f"  [{split_name}] Instancias por clase tras balanceo inteligente:")
         for cls, cnt in sorted(class_counts.items()):
             print(f"             Clase {cls:3d}: {cnt} instancias")
     else:
-        # valid y test: copiar solo las que existen
+        # valid y test: copiar solo las que existen sin alterar proporciones
         selected = [p for p in image_paths if os.path.exists(p)]
         missing = len(image_paths) - len(selected)
         if missing > 0:
@@ -164,9 +197,9 @@ def copy_yaml(dataset_dir, output_dir):
 
 def main():
     print("=" * 60)
-    print("  UNDERSAMPLING DE DATASET YOLO")
-    print(f"  Límite: {MAX_INSTANCES} instancias por clase")
-    print(f"  Seed:   {RANDOM_SEED}")
+    print("  UNDERSAMPLING INTELIGENTE (PROTECCIÓN DE CLASES RARAS)")
+    print(f"  Límite Clases Altas: {MAX_INSTANCES} instancias")
+    print(f"  Seed:                {RANDOM_SEED}")
     print("=" * 60)
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
