@@ -1,0 +1,22 @@
+# LeYOLO-Medium Custom — SE + BiFPN + SpatialAttention
+nc: 80
+scales:
+  m: [1.0, 1.0, 1024]
+
+backbone:
+  - [-1, 1, Conv,               [24, 3, 2]]                          # 0 stem /2
+  - [-1, 1, InvertedBottleneck, [32, 3, 24, "None", "SI", 2]]        # 1 /4
+  - [-1, 1, SEBlock,            [32]]                                 # 2
+  - [-1, 1, InvertedBottleneck, [96, 3, 64, "None", "SI", 2]]        # 3 /8  P3
+  - [-1, 1, SEBlock,            [96]]                                 # 4
+  - [-1, 1, InvertedBottleneck, [192, 3, 192, "None", "SI", 2]]      # 5 /16 P4
+  - [-1, 1, SEBlock,            [192]]                                # 6
+  - [-1, 1, InvertedBottleneck, [384, 3, 384, "None", "SI", 2]]      # 7 /32 P5
+  - [-1, 1, SEBlock,            [384]]                                # 8
+
+head:
+  - [[4, 6, 8], 1, BiFPNLayer,  [96, True]]     # 9  - BiFPN (1 capa, is_first=True)
+  - [4, 1, SpatialAttention,    [96]]            # 10 - Atención P3
+  - [6, 1, SpatialAttention,    [192]]           # 11 - Atención P4
+  - [8, 1, SpatialAttention,    [384]]           # 12 - Atención P5
+  - [[10, 11, 12], 1, Detect,   [nc]]            # 13 - Cabeza
